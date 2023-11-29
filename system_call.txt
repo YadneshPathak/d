@@ -1,0 +1,222 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <string.h>
+
+// Function for the child process
+void childProcess() {
+    printf("Child process is running (PID: %d).\n",getpid());
+    exit(0);
+}
+
+// Function for process-related system calls (fork, wait, exit)
+void processSystemCalls() {
+    pid_t child_pid;
+    int status;
+
+    child_pid = fork();
+    if (child_pid == 0) {
+        // This is the child process
+        childProcess();
+    } else if (child_pid > 0) {
+        // This is the parent process
+        printf("Parent process PID: %d waiting for child PID: %d to finish...\n", getpid(), child_pid);
+        wait(&status);
+        printf("Child process (PID: %d) finished.\n", child_pid);
+    } else {
+        perror("Fork failed");
+        exit(1);
+    }
+}
+
+// Function for file-related system calls (creat, )
+void fileSystemCalls() {
+    int file_descriptor;
+    char buffer[100];
+    ssize_t bytes_read, bytes_written;
+
+    // Create or open a file for writing
+    file_descriptor = creat("example.txt", S_IRUSR | S_IWUSR);
+    if (file_descriptor == -1) {
+        perror("Creat failed");
+        exit(1);
+    }
+
+    strcpy(buffer, "Hello, world!\n");
+
+    // Write to the file
+    bytes_written = write(file_descriptor, buffer, strlen(buffer));   //bytes_written stores no. of bytes/len written in file
+    if (bytes_written == -1) {
+        perror("Write failed");
+        exit(1);
+    }
+
+    close(file_descriptor);
+
+    // Open the file for reading
+    file_descriptor = open("example.txt", O_RDONLY);  // for write O_WTONLY
+    if (file_descriptor == -1) {
+        perror("Open failed");
+        exit(1);
+    }
+
+    // Read from the file
+    bytes_read = read(file_descriptor, buffer, sizeof(buffer));
+    if (bytes_read == -1) {
+        perror("Read failed");
+        exit(1);
+    }
+
+    buffer[bytes_read] = '\0';
+    printf("Read from file: %s", buffer);
+
+    close(file_descriptor);
+
+    // File Information System Call (Stat)
+    struct stat file_info;
+    if (stat("example.txt", &file_info) == -1) {
+        perror("Stat failed");
+        exit(1);
+    }
+
+    printf("File size: %ld bytes\n", file_info.st_size);
+
+    // Create a hard link to the file
+    if (link("example.txt", "hard_link.txt") == -1) {
+        perror("Link failed");
+        exit(1);
+    } else {
+        printf("Link created successfully.\n");
+    }
+
+    // Remove the hard link
+    if (unlink("hard_link.txt") == -1) {
+        perror("Unlink failed");
+        exit(1);
+    } else {
+        printf("Link removed successfully.\n");
+    }
+}
+
+// Function for communication system calls (Pipe and FIFO)
+void communicationSystemCalls() {
+    int pipe_fd[2];
+    char message[] = "Hello from pipe!";
+    char pipe_buffer[100];
+    char fifo_buffer[100];
+
+    // Create a pipe
+    if (pipe(pipe_fd) == -1) {
+        perror("Pipe creation failed");
+        exit(1);
+    }
+
+    // Create a FIFO (Named Pipe)
+    const char *fifo_path = "my_fifo";
+
+    if (mkfifo(fifo_path, 0666) == -1) {
+        perror("FIFO creation failed");
+        exit(1);
+    }
+
+    pid_t child_pid = fork();
+
+    if (child_pid == 0) {
+        // This is the child process
+        close(pipe_fd[1]); // Close write end of the pipe
+        ssize_t bytes_read_pipe = read(pipe_fd[0], pipe_buffer, sizeof(pipe_buffer));
+        if (bytes_read_pipe == -1) {
+            perror("Read from pipe failed");
+            exit(1);
+        }
+        pipe_buffer[bytes_read_pipe] = '\0';
+        printf("Child received from pipe: %s\n", pipe_buffer);
+        close(pipe_fd[0]);
+
+        int fifo_fd = open(fifo_path, O_RDONLY);
+        if (fifo_fd == -1) {
+            perror("FIFO open failed");
+            exit(1);
+        }
+
+        ssize_t bytes_read_fifo = read(fifo_fd, fifo_buffer, sizeof(fifo_buffer));
+        if (bytes_read_fifo == -1) {
+            perror("Read from FIFO failed");
+            exit(1);
+        }
+        fifo_buffer[bytes_read_fifo] = '\0';
+        printf("Child received from FIFO: %s\n", fifo_buffer);
+        close(fifo_fd);
+
+        exit(0);
+    } else if (child_pid > 0) {
+        // This is the parent process
+        close(pipe_fd[0]); // Close read end of the pipe
+
+        // Write to the pipe
+        write(pipe_fd[1], message, strlen(message));
+        printf("Parent sent to pipe: %s\n", message);
+        close(pipe_fd[1]);
+
+        int fifo_fd = open(fifo_path, O_WRONLY);
+        if (fifo_fd == -1) {
+            perror("FIFO open failed");
+            exit(1);
+        }
+
+        write(fifo_fd, message, strlen(message));
+        printf("Parent sent to FIFO: %s\n", message);
+        close(fifo_fd);
+
+        wait(NULL);
+    } else {
+        perror("Fork failed");
+        exit(1);
+    }
+
+    unlink(fifo_path); // Remove the FIFO
+}
+
+void informationSystemCalls() {
+    printf("Current process ID: %d\n", getpid());
+    printf("Parent process ID: %d\n", getppid());
+    printf("User ID: %d\n", getuid());
+    printf("Effective User ID: %d\n", geteuid());
+    printf("Group ID: %d\n", getgid());
+    printf("Effective Group ID: %d\n", getegid());
+}
+
+int main() {
+    int choice;
+
+    printf("Select the operation:\n");
+    printf("1. Process System Calls\n");
+    printf("2. File System Calls\n");
+    printf("3. Communication System Calls\n");
+    printf("4. Information System Calls\n");
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
+
+    switch (choice) {
+        case 1:
+            processSystemCalls();
+            break;
+        case 2:
+            fileSystemCalls();
+            break;
+        case 3:
+            communicationSystemCalls();
+            break;
+        case 4:
+            informationSystemCalls();
+            break;
+        default:
+            printf("Invalid choice.\n");
+    }
+
+    return 0;
+}
